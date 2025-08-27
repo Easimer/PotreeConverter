@@ -11,7 +11,7 @@
 struct SamplerRandom : public Sampler {
 
 	// subsample a local octree from bottom up
-	void sample(Node* node, Attributes attributes, double baseSpacing, 
+	void sample(Node* node, Attributes &attributes, double baseSpacing, 
 		function<void(Node*)> onNodeCompleted,
 		function<void(Node*)> onNodeDiscarded
 	) {
@@ -40,7 +40,7 @@ struct SamplerRandom : public Sampler {
 		Vector3 scale = attributes.posScale;
 		Vector3 offset = attributes.posOffset;
 
-		traversePost(node, [bytesPerPoint, baseSpacing, scale, offset, &onNodeCompleted, &onNodeDiscarded, attributes](Node* node) {
+		traversePost(node, [bytesPerPoint, baseSpacing, scale, offset, &onNodeCompleted, &onNodeDiscarded, &attributes](Node* node) {
 			node->sampled = true;
 
 			int64_t numPoints = node->numPoints;

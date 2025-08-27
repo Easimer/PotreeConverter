@@ -143,12 +143,12 @@ namespace chunker_countsort_laszip {
 
 		struct Task{
 			string path;
-			int64_t totalPoints = 0;
-			int64_t firstPoint;
-			int64_t firstByte;
-			int64_t numBytes;
-			int64_t numPoints;
-			int64_t bpp;
+			size_t totalPoints = 0;
+			size_t firstPoint;
+			size_t firstByte;
+			size_t numBytes;
+			size_t numPoints;
+			size_t bpp;
 			Vector3 scale;
 			Vector3 offset;
 			Vector3 min;
@@ -157,10 +157,10 @@ namespace chunker_countsort_laszip {
 
 		auto processor = [gridSize, &grid, tStart, &state, &outputAttributes, monitor](shared_ptr<Task> task){
 			string path = task->path;
-			int64_t start = task->firstByte;
-			int64_t numBytes = task->numBytes;
-			int64_t numToRead = task->numPoints;
-			int64_t bpp = task->bpp;
+			size_t start = task->firstByte;
+			size_t numBytes = task->numBytes;
+			size_t numToRead = task->numPoints;
+			size_t bpp = task->bpp;
 			//Vector3 scale = task->scale;
 			//Vector3 offset = task->offset;
 			Vector3 min = task->min;
@@ -178,7 +178,7 @@ namespace chunker_countsort_laszip {
 			
 
 			thread_local unique_ptr<void, void(*)(void*)> buffer(nullptr, free);
-			thread_local int64_t bufferSize = -1;
+			thread_local size_t bufferSize = 0;
 
 			{ // sanity checks
 				if(numBytes < 0){
@@ -213,8 +213,8 @@ namespace chunker_countsort_laszip {
 			auto posScale = outputAttributes.posScale;
 			auto posOffset = outputAttributes.posOffset;
 
-			for (int i = 0; i < numToRead; i++) {
-				int64_t pointOffset = i * bpp;
+			for (size_t i = 0; i < numToRead; i++) {
+				size_t pointOffset = i * bpp;
 
 				laszip_read_point(laszip_reader);
 				laszip_get_coordinates(laszip_reader, coordinates);
@@ -250,11 +250,11 @@ namespace chunker_countsort_laszip {
 						exit(123);
 					}
 
-					int64_t ix = int64_t(std::min(dGridSize * ux, dGridSize - 1.0));
-					int64_t iy = int64_t(std::min(dGridSize * uy, dGridSize - 1.0));
-					int64_t iz = int64_t(std::min(dGridSize * uz, dGridSize - 1.0));
+					size_t ix = size_t(std::min(dGridSize * ux, dGridSize - 1.0));
+					size_t iy = size_t(std::min(dGridSize * uy, dGridSize - 1.0));
+					size_t iz = size_t(std::min(dGridSize * uz, dGridSize - 1.0));
 
-					int64_t index = ix + iy * gridSize + iz * gridSize * gridSize;
+					size_t index = ix + iy * gridSize + iz * gridSize * gridSize;
 
 					grid[index]++;
 				}
@@ -264,7 +264,7 @@ namespace chunker_countsort_laszip {
 			laszip_close_reader(laszip_reader);
 			laszip_destroy(laszip_reader);
 
-			static int64_t pointsProcessed = 0;
+			static size_t pointsProcessed = 0;
 			pointsProcessed += task->numPoints;
 
 			state.name = "COUNTING";
@@ -300,7 +300,8 @@ namespace chunker_countsort_laszip {
 			int64_t numPoints = std::max(uint64_t(header->number_of_point_records), header->extended_number_of_point_records);
 
 			int64_t pointsLeft = numPoints;
-			int64_t batchSize = 1'000'000;
+			// int64_t batchSize = 1'000'000;
+			int64_t batchSize = numPoints / (2 * std::max(numChunkerThreads, size_t(1)));
 			int64_t numRead = 0;
 
 			while (pointsLeft > 0) {

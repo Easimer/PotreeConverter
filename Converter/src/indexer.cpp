@@ -1723,12 +1723,12 @@ void doIndexing(string targetDir, State& state, Options& options, Sampler& sampl
 	atomic_int64_t activeThreads = 0;
 	mutex mtx_nodes;
 	vector<shared_ptr<Node>> nodes;
-	int numThreads = numSampleThreads() + 4;
+	size_t numThreads = numSampleThreads();
 	TaskPool<Task> pool(numThreads, [&onNodeCompleted, &onNodeDiscarded, &writeAndUnload, &state, &options, &activeThreads, tStart, &lastReport, &totalPoints, totalBytes, &pointsProcessed, chunks, &indexer, &nodes, &mtx_nodes, &sampler](auto task) {
 		
 		auto chunk = task->chunk;
 		auto chunkRoot = make_shared<Node>(chunk->id, chunk->min, chunk->max);
-		auto attributes = chunks->attributes;
+		Attributes &attributes = chunks->attributes;
 		int64_t bpp = attributes.bytes;
 
 		indexer.waitUntilWriterBacklogBelow(1'000);
@@ -1789,7 +1789,7 @@ void doIndexing(string targetDir, State& state, Options& options, Sampler& sampl
 		activeThreads--;
 	});
 
-	for (auto chunk : chunks->list) {
+	for (shared_ptr<Chunk> &chunk : chunks->list) {
 		auto task = make_shared<Task>(chunk);
 		pool.addTask(task);
 	}
@@ -1822,9 +1822,7 @@ void doIndexing(string targetDir, State& state, Options& options, Sampler& sampl
 
 	// sample up to root node
 	if (chunks->list.size() == 1) {
-		auto node = nodes[0];
-
-		indexer.root = node;
+		indexer.root = nodes[0];
 	} else if (!indexer.root->sampled){
 		sampler.sample(indexer.root.get(), attributes, indexer.spacing, onNodeCompleted, onNodeDiscarded);
 	}
