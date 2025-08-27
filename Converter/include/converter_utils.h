@@ -38,6 +38,12 @@ struct LASPointF2 {
 	uint16_t b;
 };
 
+struct Georeference {
+	// Contents of the OGC Coordinate System WKT VLR (empty if it was not present)
+	vector<uint8_t> wktCoordinateSystem;
+	// Contents of the OGC Math Transform WKT VLR (empty if it was not present)
+	vector<uint8_t> wktMathTransform;
+};
 
 struct Source {
 	string path;
@@ -47,6 +53,8 @@ struct Source {
 	int bytesPerPoint = 0;
 	Vector3 min;
 	Vector3 max;
+
+	Georeference georeference;
 };
 
 struct State {
@@ -59,6 +67,8 @@ struct State {
 
 	int numPasses = 3;
 	int currentPass = 0; // starts with index 1! interval: [1,  numPasses]
+
+	Georeference georeference;
 
 	mutex mtx;
 

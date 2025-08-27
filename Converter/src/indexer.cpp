@@ -1,11 +1,11 @@
 
 #include <cerrno>
-#include <execution>
 #include <algorithm>
 
 #include "indexer.h"
 
 #include "Attributes.h"
+#include "converter_utils.h"
 #include "logger.h"
 #include "PotreeConverter.h"
 #include "DbgWriter.h"
@@ -355,6 +355,50 @@ static string s(const string& k) {
 	return "\"" + k + "\"";
 }
 
+template<typename It>
+static string escape(It begin, It end) {
+	std::vector<char> tmp;
+	ptrdiff_t len = end - begin;
+
+	if (len > 0) {
+		tmp.reserve(len + 2);
+	}
+
+	tmp.push_back('\"');
+
+	while(begin != end) {
+		char c = *begin;
+		++begin;
+		
+		switch(c) {
+			case '\"':
+			case '\\':
+			case '/': {
+				tmp.push_back('\\');
+				tmp.push_back(c);
+			  break;
+			}
+			case '\b': tmp.push_back('\\'); tmp.push_back('b'); break;
+			case '\f': tmp.push_back('\\'); tmp.push_back('f'); break;
+			case '\n': tmp.push_back('\\'); tmp.push_back('n'); break;
+			case '\r': tmp.push_back('\\'); tmp.push_back('r'); break;
+			case '\t': tmp.push_back('\\'); tmp.push_back('t'); break;
+			default: {
+				tmp.push_back(c);
+				break;
+			}
+		}
+	}
+
+	tmp.push_back('\"');
+
+	return string(tmp.begin(), tmp.end());
+}
+
+static string escape(const string& s) {
+	return escape(s.cbegin(), s.cend());
+}
+
 static string t(size_t numTabs) {
 	return string(numTabs, '\t');
 }
@@ -498,6 +542,50 @@ static string jsonFrom(const Attributes& attributes) {
 	return ss.str();
 }
 
+static string jsonFrom(const Georeference& ref, const Options& options) {
+	stringstream ss;
+
+	uint32_t hasFormat = 0;
+	if(!options.projection.empty()) {
+		hasFormat |= 1;
+	}
+	if(!ref.wktCoordinateSystem.empty()) {
+		hasFormat |= 2;
+	}
+
+	ss << '{' << endl;
+
+	ss << t(2) << s("georeference") << ": {" << endl;
+
+	if(hasFormat & 1) {
+		hasFormat &= ~1;
+		ss << t(3) << s("proj4") << ": " << escape(options.projection);
+
+		if (hasFormat != 0) {
+			ss << ',';
+		}
+		ss << endl;
+	}
+
+	if(hasFormat & 2) {
+		hasFormat &= ~2;
+		ss << t(3) << s("wkt") << ": {" << endl;
+		ss << t(4) << s("coordinateSystem") << ": " << escape(ref.wktCoordinateSystem.begin(), ref.wktCoordinateSystem.end() - 1);
+		if (!ref.wktMathTransform.empty()) {
+			ss << ',' << endl;
+			ss << t(4) << s("mathTransform") << ": " << escape(ref.wktMathTransform.begin(), ref.wktMathTransform.end() - 1) << endl;
+		} else {
+			ss << endl;
+		}
+		ss << t(3) << '}' << endl;
+	}
+
+	ss << t(2) << '}' << endl;
+	ss << t(1) << '}' << endl;
+
+	return ss.str();
+}
+
 string Indexer::createMetadata(Options options, State& state, Hierarchy hierarchy) {
 	Vector3 min = root->min;
 	Vector3 max = root->max;
@@ -516,7 +604,8 @@ string Indexer::createMetadata(Options options, State& state, Hierarchy hierarch
 	ss << t(1) << s("spacing") << ": " << d(spacing) << "," << endl;
 	ss << t(1) << s("boundingBox") << ": " << jsonFromBoundingBox(min, max) << "," << endl;
 	ss << t(1) << s("encoding") << ": " << s(options.encoding) << "," << endl;
-	ss << t(1) << s("attributes") << ": " << jsonFrom(attributes) << endl;
+	ss << t(1) << s("attributes") << ": " << jsonFrom(attributes) << ',' << endl;
+	ss << t(1) << s("MXW_georeferences") << ": " << jsonFrom(state.georeference, options) << endl;
 	ss << t(0) << "}" << endl;
 
 	return ss.str();

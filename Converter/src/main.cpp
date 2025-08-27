@@ -196,6 +196,20 @@ Curated curateSources(vector<string> paths) {
 		source.numPoints = header.numPoints;
 		source.filesize = filesize;
 
+		// Extract georeferencing info
+		for (const VLR& vlr : header.vlrs) {
+			switch(vlr.recordID) {
+				case 2111: {
+					source.georeference.wktMathTransform = vlr.data;
+					break;
+				}
+				case 2112: {
+					source.georeference.wktCoordinateSystem = vlr.data;
+					break;
+				}
+			}
+		}
+
 		lock_guard<mutex> lock(mtx);
 		sources.push_back(source);
 	});
@@ -546,6 +560,16 @@ int main(int argc, char** argv) {
 	State state;
 	state.pointsTotal = stats.totalPoints;
 	state.bytesProcessed = stats.totalBytes;
+
+	// Use the georef info from the first cloud that has one.
+	// We're assuming here that each source uses the same coord system and
+	// transform. It wouldn't make much sense to merge them if they weren't.
+	for (const Source& source : sources) {
+		if (!source.georeference.wktCoordinateSystem.empty()) {
+			state.georeference = source.georeference;
+			break;
+		}
+	}
 
 	// auto monitor = startMonitoring(state);
 	auto monitor = make_shared<Monitor>(&state);
