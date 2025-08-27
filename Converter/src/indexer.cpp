@@ -351,154 +351,156 @@ namespace indexer{
 		}
 	}
 
+static string s(const string& k) {
+	return "\"" + k + "\"";
+}
+
+static string t(size_t numTabs) {
+	return string(numTabs, '\t');
+}
+
+static string d(double value) {
+	auto digits = std::numeric_limits<double>::max_digits10;
+
+	std::stringstream ss;
+	ss << std::setprecision(digits);
+	ss << value;
+	
+	return ss.str();
+}
+
+static string jsonFrom(const vector<int64_t> &values) {
+	size_t numValues = values.size();
+	if (numValues == 0) {
+		return "[]";
+	}
+
+	stringstream ss;
+	ss << "[";
+
+	size_t idxLastValue = numValues - 1;
+	for (size_t i = 0; i < numValues; i++) {
+		ss << values[i];
+
+		if (i != idxLastValue) {
+			ss << ", ";
+		}
+	}
+	ss << "]";
+
+	return ss.str();
+}
+
+static string jsonFrom(const vector<double> &values) {
+	size_t numValues = values.size();
+	if (numValues == 0) {
+		return "[]";
+	}
+
+	stringstream ss;
+	ss << "[";
+
+	size_t idxLastValue = numValues - 1;
+	for (size_t i = 0; i < numValues; i++) {
+		ss << d(values[i]);
+
+		if (i != idxLastValue) {
+			ss << ", ";
+		}
+	}
+	ss << "]";
+
+	return ss.str();
+}
+
+static string jsonFrom(const Vector3& value) {
+	return "[" + d(value.x) + ", " + d(value.y) + ", " + d(value.z) + "]";
+}
+
+static string getHierarchyJsonString(const Hierarchy& hierarchy, int64_t octreeDepth) {
+	stringstream ss;
+	ss << "{" << endl;
+	ss << t(2) << s("firstChunkSize") << ": " << hierarchy.firstChunkSize << ", " << endl;
+	ss << t(2) << s("stepSize") << ": " << hierarchy.stepSize << ", " << endl;
+	ss << t(2) << s("depth") << ": " << octreeDepth << endl;
+	ss << t(1) << "}";
+
+	return ss.str();
+}
+
+static string jsonFromBoundingBox(const Vector3& min, const Vector3& max) {
+	stringstream ss;
+	ss << "{" << endl;
+	ss << t(2) << s("min") << ": " << jsonFrom(min) << ", " << endl;
+	ss << t(2) << s("max") << ": " << jsonFrom(max) << endl;
+	ss << t(1) << "}";
+
+	return ss.str();
+}
+
+static string jsonFrom(const Attributes& attributes) {
+	stringstream ss;
+	ss << "[" << endl;
+
+	for (int i = 0; i < attributes.list.size(); i++) {
+		auto& attribute = attributes.list[i];
+
+		if (i == 0) {
+			ss << t(2) << "{" << endl;
+		}
+
+		ss << t(3) << s("name") << ": " << s(attribute.name) << "," << endl;
+		ss << t(3) << s("description") << ": " << s(attribute.description) << "," << endl;
+		ss << t(3) << s("size") << ": " << attribute.size << "," << endl;
+		ss << t(3) << s("numElements") << ": " << attribute.numElements << "," << endl;
+		ss << t(3) << s("elementSize") << ": " << attribute.elementSize << "," << endl;
+		ss << t(3) << s("type") << ": " << s(getAttributeTypename(attribute.type)) << "," << endl;
+
+		bool emptyHistogram = true;
+		for(int i = 0; i < attribute.histogram.size(); i++){
+			if(attribute.histogram[i] != 0){
+				emptyHistogram = false;
+			}
+		}
+
+		 if(attribute.size == 1 && !emptyHistogram){
+		 	ss << t(3) << s("histogram") << ": " << jsonFrom(attribute.histogram) << ", " << endl;
+		 }
+
+		if (attribute.numElements == 1) {
+			ss << t(3) << s("min") << ": " << jsonFrom(vector<double>{ attribute.min.x }) << "," << endl;
+			ss << t(3) << s("max") << ": " << jsonFrom(vector<double>{ attribute.max.x }) << ","<< endl;
+			ss << t(3) << s("scale") << ": " << jsonFrom(vector<double>{ attribute.scale.x }) << ","<< endl;
+			ss << t(3) << s("offset") << ": " << jsonFrom(vector<double>{ attribute.offset.x }) << endl;
+		} else if (attribute.numElements == 2) {
+			ss << t(3) << s("min") << ": " << jsonFrom(vector<double>{ attribute.min.x, attribute.min.y }) << "," << endl;
+			ss << t(3) << s("max") << ": " << jsonFrom(vector<double>{ attribute.max.x, attribute.max.y }) << ","<< endl;
+			ss << t(3) << s("scale") << ": " << jsonFrom(vector<double>{ attribute.scale.x, attribute.scale.y }) << ","<< endl;
+			ss << t(3) << s("offset") << ": " << jsonFrom(vector<double>{ attribute.offset.x, attribute.offset.y }) << endl;
+		} else if (attribute.numElements == 3) {
+			ss << t(3) << s("min") << ": " << jsonFrom(vector<double>{ attribute.min.x, attribute.min.y, attribute.min.z }) << "," << endl;
+			ss << t(3) << s("max") << ": " << jsonFrom(vector<double>{ attribute.max.x, attribute.max.y, attribute.max.z }) << ","<< endl;
+			ss << t(3) << s("scale") << ": " << jsonFrom(vector<double>{ attribute.scale.x, attribute.scale.y, attribute.scale.z }) << ","<< endl;
+			ss << t(3) << s("offset") << ": " << jsonFrom(vector<double>{ attribute.offset.x, attribute.offset.y, attribute.offset.z }) << endl;
+		}
+
+		if (i < attributes.list.size() - 1) {
+			ss << t(2) << "},{" << endl;
+		} else {
+			ss << t(2) << "}" << endl;
+		}
+
+	}
+	
+
+	ss << t(1) << "]";
+
+	return ss.str();
+}
+
 string Indexer::createMetadata(Options options, State& state, Hierarchy hierarchy) {
-
-	auto min = root->min;
-	auto max = root->max;
-
-	auto d = [](double value) {
-		auto digits = std::numeric_limits<double>::max_digits10;
-
-		std::stringstream ss;
-		ss << std::setprecision(digits);
-		ss << value;
-		
-		return ss.str();
-	};
-
-	auto s = [](string str) {
-		return "\"" + str + "\"";
-	};
-
-	auto t = [](int numTabs) {
-		return string(numTabs, '\t');
-	};
-
-	auto toJson = [d](Vector3 value) {
-		return "[" + d(value.x) + ", " + d(value.y) + ", " + d(value.z) + "]";
-	};
-
-	auto vecToJson = [d](vector<double> values) {
-
-		stringstream ss;
-		ss << "[";
-
-		for (int i = 0; i < values.size(); i++) {
-
-			ss << d(values[i]);
-
-			if (i < values.size() - 1) {
-				ss << ", ";
-			}
-		}
-		ss << "]";
-
-		return ss.str();
-	};
-
-	auto vecI64ToJson = [](vector<int64_t> &values) {
-
-		stringstream ss;
-		ss << "[";
-
-		for (int i = 0; i < values.size(); i++) {
-
-			ss << values[i];
-
-			if (i < values.size() - 1) {
-				ss << ", ";
-			}
-		}
-		ss << "]";
-
-		return ss.str();
-	};
-
-	auto octreeDepth = this->octreeDepth;
-	auto getHierarchyJsonString = [hierarchy, octreeDepth, t, s]() {
-
-		stringstream ss;
-		ss << "{" << endl;
-		ss << t(2) << s("firstChunkSize") << ": " << hierarchy.firstChunkSize << ", " << endl;
-		ss << t(2) << s("stepSize") << ": " << hierarchy.stepSize << ", " << endl;
-		ss << t(2) << s("depth") << ": " << octreeDepth << endl;
-		ss << t(1) << "}";
-
-		return ss.str();
-	};
-
-	auto getBoundingBoxJsonString = [min, max, t, s, toJson, vecToJson]() {
-
-		stringstream ss;
-		ss << "{" << endl;
-		ss << t(2) << s("min") << ": " << toJson(min) << ", " << endl;
-		ss << t(2) << s("max") << ": " << toJson(max) << endl;
-		ss << t(1) << "}";
-
-		return ss.str();
-	};
-
-	Attributes& attributes = this->attributes;
-	auto getAttributesJsonString = [&attributes, t, s, toJson, vecToJson, vecI64ToJson]() {
-
-		stringstream ss;
-		ss << "[" << endl;
-
-		for (int i = 0; i < attributes.list.size(); i++) {
-			auto& attribute = attributes.list[i];
-
-			if (i == 0) {
-				ss << t(2) << "{" << endl;
-			}
-
-			ss << t(3) << s("name") << ": " << s(attribute.name) << "," << endl;
-			ss << t(3) << s("description") << ": " << s(attribute.description) << "," << endl;
-			ss << t(3) << s("size") << ": " << attribute.size << "," << endl;
-			ss << t(3) << s("numElements") << ": " << attribute.numElements << "," << endl;
-			ss << t(3) << s("elementSize") << ": " << attribute.elementSize << "," << endl;
-			ss << t(3) << s("type") << ": " << s(getAttributeTypename(attribute.type)) << "," << endl;
-
-			bool emptyHistogram = true;
-			for(int i = 0; i < attribute.histogram.size(); i++){
-				if(attribute.histogram[i] != 0){
-					emptyHistogram = false;
-				}
-			}
-
-			 if(attribute.size == 1 && !emptyHistogram){
-			 	ss << t(3) << s("histogram") << ": " << vecI64ToJson(attribute.histogram) << ", " << endl;
-			 }
-
-			if (attribute.numElements == 1) {
-				ss << t(3) << s("min") << ": " << vecToJson(vector<double>{ attribute.min.x }) << "," << endl;
-				ss << t(3) << s("max") << ": " << vecToJson(vector<double>{ attribute.max.x }) << ","<< endl;
-				ss << t(3) << s("scale") << ": " << vecToJson(vector<double>{ attribute.scale.x }) << ","<< endl;
-				ss << t(3) << s("offset") << ": " << vecToJson(vector<double>{ attribute.offset.x }) << endl;
-			} else if (attribute.numElements == 2) {
-				ss << t(3) << s("min") << ": " << vecToJson(vector<double>{ attribute.min.x, attribute.min.y }) << "," << endl;
-				ss << t(3) << s("max") << ": " << vecToJson(vector<double>{ attribute.max.x, attribute.max.y }) << ","<< endl;
-				ss << t(3) << s("scale") << ": " << vecToJson(vector<double>{ attribute.scale.x, attribute.scale.y }) << ","<< endl;
-				ss << t(3) << s("offset") << ": " << vecToJson(vector<double>{ attribute.offset.x, attribute.offset.y }) << endl;
-			} else if (attribute.numElements == 3) {
-				ss << t(3) << s("min") << ": " << vecToJson(vector<double>{ attribute.min.x, attribute.min.y, attribute.min.z }) << "," << endl;
-				ss << t(3) << s("max") << ": " << vecToJson(vector<double>{ attribute.max.x, attribute.max.y, attribute.max.z }) << ","<< endl;
-				ss << t(3) << s("scale") << ": " << vecToJson(vector<double>{ attribute.scale.x, attribute.scale.y, attribute.scale.z }) << ","<< endl;
-				ss << t(3) << s("offset") << ": " << vecToJson(vector<double>{ attribute.offset.x, attribute.offset.y, attribute.offset.z }) << endl;
-			}
-
-			if (i < attributes.list.size() - 1) {
-				ss << t(2) << "},{" << endl;
-			} else {
-				ss << t(2) << "}" << endl;
-			}
-
-		}
-		
-
-		ss << t(1) << "]";
-
-		return ss.str();
-	};
+	Vector3 min = root->min;
+	Vector3 max = root->max;
 
 	stringstream ss;
 
@@ -508,19 +510,16 @@ string Indexer::createMetadata(Options options, State& state, Hierarchy hierarch
 	ss << t(1) << s("description") << ": " << s("") << "," << endl;
 	ss << t(1) << s("points") << ": " << state.pointsTotal << "," << endl;
 	ss << t(1) << s("projection") << ": " << s(options.projection) << "," << endl;
-	ss << t(1) << s("hierarchy") << ": " << getHierarchyJsonString() << "," << endl;
-	ss << t(1) << s("offset") << ": " << toJson(attributes.posOffset) << "," << endl;
-	ss << t(1) << s("scale") << ": " << toJson(attributes.posScale) << "," << endl;
+	ss << t(1) << s("hierarchy") << ": " << getHierarchyJsonString(hierarchy, octreeDepth) << "," << endl;
+	ss << t(1) << s("offset") << ": " << jsonFrom(attributes.posOffset) << "," << endl;
+	ss << t(1) << s("scale") << ": " << jsonFrom(attributes.posScale) << "," << endl;
 	ss << t(1) << s("spacing") << ": " << d(spacing) << "," << endl;
-	ss << t(1) << s("boundingBox") << ": " << getBoundingBoxJsonString() << "," << endl;
+	ss << t(1) << s("boundingBox") << ": " << jsonFromBoundingBox(min, max) << "," << endl;
 	ss << t(1) << s("encoding") << ": " << s(options.encoding) << "," << endl;
-	ss << t(1) << s("attributes") << ": " << getAttributesJsonString() << endl;
+	ss << t(1) << s("attributes") << ": " << jsonFrom(attributes) << endl;
 	ss << t(0) << "}" << endl;
 
-	string str = ss.str();
-
-
-	return str;
+	return ss.str();
 }
 
 HierarchyChunk Indexer::gatherChunk(Node* start, int levels) {
@@ -1162,9 +1161,9 @@ SoA toStructOfArrays(Node* node, Attributes attributes) {
 			};
 			vector<P> ps;
 			P min;
-			min.x = std::numeric_limits<int64_t>::max();
-			min.y = std::numeric_limits<int64_t>::max();
-			min.z = std::numeric_limits<int64_t>::max();
+			min.x = std::numeric_limits<int32_t>::max();
+			min.y = std::numeric_limits<int32_t>::max();
+			min.z = std::numeric_limits<int32_t>::max();
 		
 			for (int64_t i = 0; i < numPoints; i++) {
 
