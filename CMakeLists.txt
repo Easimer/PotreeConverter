@@ -9,6 +9,10 @@ set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 
 #message(${PROJECT_SOURCE_DIR})
 
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+  set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+endif()
+
 set(HEADER_FILES  
 	./Converter/include/Attributes.h
 	./Converter/include/chunker_countsort_laszip.h

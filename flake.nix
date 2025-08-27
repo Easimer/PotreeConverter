@@ -26,6 +26,7 @@
             cmake
             tbb_2020
             pkg-config
+            clang-tools
           ];
         };
       }
