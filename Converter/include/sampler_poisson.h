@@ -20,8 +20,8 @@ struct SamplerPoisson : public Sampler {
 			double x;
 			double y;
 			double z;
-			int32_t pointIndex;
-			int32_t childIndex;
+			int64_t pointIndex;
+			int64_t childIndex;
 		};
 
 		function<void(Node*, function<void(Node*)>)> traversePost = [&traversePost](Node* node, function<void(Node*)> callback) {
@@ -114,7 +114,7 @@ struct SamplerPoisson : public Sampler {
 			double spacing = baseSpacing / pow(2.0, node->level());
 			double squaredSpacing = spacing * spacing;
 
-			auto squaredDistance = [](Point& a, Point& b) {
+			auto squaredDistance = [](const Point& a, const Point& b) {
 				double dx = a.x - b.x;
 				double dy = a.y - b.y;
 				double dz = a.z - b.z;
@@ -130,7 +130,7 @@ struct SamplerPoisson : public Sampler {
 			//int dbgSumChecks = 0;
 			//int dbgMaxChecks = 0;
 
-			auto checkAccept = [/*&dbgChecks, &dbgSumChecks,*/ &dbgNumAccepted, spacing, squaredSpacing, &squaredDistance, center /*, &numDistanceChecks*/](Point candidate) {
+			auto checkAccept = [/*&dbgChecks, &dbgSumChecks,*/ &dbgNumAccepted, spacing, squaredSpacing, &squaredDistance, center /*, &numDistanceChecks*/](const Point &candidate) {
 
 				auto cx = candidate.x - center.x;
 				auto cy = candidate.y - center.y;
@@ -180,7 +180,7 @@ struct SamplerPoisson : public Sampler {
 			};
 
 			auto parallel = std::execution::par_unseq;
-			std::sort(parallel, points.begin(), points.end(), [center](Point a, Point b) -> bool {
+			std::sort(parallel, points.begin(), points.end(), [center](const Point &a, const Point &b) -> bool {
 
 				auto ax = a.x - center.x;
 				auto ay = a.y - center.y;
@@ -202,7 +202,7 @@ struct SamplerPoisson : public Sampler {
 				//return a.z < b.z;
 			});
 
-			for (Point point : points) {
+			for (const Point &point : points) {
 
 				//dbgChecks = 0;
 

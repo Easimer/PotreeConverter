@@ -281,7 +281,7 @@ struct SamplerPoissonAverage : public Sampler {
 			};
 
 			auto parallel = std::execution::par_unseq;
-			std::sort(parallel, points.begin(), points.end(), [center](Point a, Point b) -> bool {
+			std::sort(parallel, points.begin(), points.end(), [center](const Point &a, const Point &b) -> bool {
 
 				auto ax = a.x - center.x;
 				auto ay = a.y - center.y;
