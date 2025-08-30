@@ -592,6 +592,8 @@ string Indexer::createMetadata(Options options, State& state, Hierarchy hierarch
 
 	stringstream ss;
 
+	string encoding = options.encoding == "DEFAULT" ? "BROTLI" : options.encoding;
+
 	ss << t(0) << "{" << endl;
 	ss << t(1) << s("version") << ": " << s("2.0") << "," << endl;
 	ss << t(1) << s("name") << ": " << s(options.name) << "," << endl;
@@ -603,7 +605,7 @@ string Indexer::createMetadata(Options options, State& state, Hierarchy hierarch
 	ss << t(1) << s("scale") << ": " << jsonFrom(attributes.posScale) << "," << endl;
 	ss << t(1) << s("spacing") << ": " << d(spacing) << "," << endl;
 	ss << t(1) << s("boundingBox") << ": " << jsonFromBoundingBox(min, max) << "," << endl;
-	ss << t(1) << s("encoding") << ": " << s(options.encoding) << "," << endl;
+	ss << t(1) << s("encoding") << ": " << s(encoding) << "," << endl;
 	ss << t(1) << s("attributes") << ": " << jsonFrom(attributes) << ',' << endl;
 	ss << t(1) << s("MXW_georeferences") << ": " << jsonFrom(state.georeference, options) << endl;
 	ss << t(0) << "}" << endl;
