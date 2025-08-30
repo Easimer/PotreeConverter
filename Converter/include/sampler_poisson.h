@@ -2,6 +2,7 @@
 #pragma once
 
 #include <execution>
+#include <numeric>
 
 #include "structures.h"
 #include "Attributes.h"
@@ -9,6 +10,42 @@
 
 
 struct SamplerPoisson : public Sampler {
+	struct PointIndex {
+		size_t pointIndex;
+		uint8_t childIndex;
+	};
+
+	struct f32x3 {
+		float x, y, z;
+
+		f32x3() : x(0.0f), y(0.0f), z(0.0f) {}
+		f32x3(float x, float y, float z) : x(x), y(y), z(z) {}
+		f32x3(const Vector3& in) : x(in.x), y(in.y), z(in.z) {}
+
+		f32x3 operator*(const f32x3& rhs) const {
+			return f32x3{ x * rhs.x, y * rhs.y, z * rhs.z };
+		}
+
+		f32x3 operator+(const f32x3& rhs) const {
+			return f32x3{ x + rhs.x, y + rhs.y, z + rhs.z };
+		}
+
+		f32x3 operator-(const f32x3& rhs) const {
+			return f32x3{ x - rhs.x, y - rhs.y, z - rhs.z };
+		}
+
+		float dot(const f32x3& rhs) const {
+			return x * rhs.x + y * rhs.y + z * rhs.z;
+		}
+
+		float lengthSq() const {
+			return x * x + y * y + z * z;
+		}
+
+		float length() const {
+			return sqrtf(lengthSq());
+		}
+	};
 
 	// subsample a local octree from bottom up
 	void sample(Node* node, Attributes &attributes, double baseSpacing, 
@@ -16,13 +53,6 @@ struct SamplerPoisson : public Sampler {
 		function<void(Node*)> onNodeDiscarded
 	) {
 
-		struct Point {
-			double x;
-			double y;
-			double z;
-			int64_t pointIndex;
-			int64_t childIndex;
-		};
 
 		function<void(Node*, function<void(Node*)>)> traversePost = [&traversePost](Node* node, function<void(Node*)> callback) {
 			for (auto child : node->children) {
@@ -35,11 +65,16 @@ struct SamplerPoisson : public Sampler {
 			callback(node);
 		};
 
-		int64_t bytesPerPoint = attributes.bytes;
-		Vector3 scale = attributes.posScale;
-		Vector3 offset = attributes.posOffset;
+		vector<f32x3> pointPos;
+		vector<PointIndex> pointIdx;
+		vector<size_t> pointIndices;
 
-		traversePost(node, [bytesPerPoint, baseSpacing, scale, offset, &onNodeCompleted, &onNodeDiscarded, &attributes](Node* node) {
+		vector<f32x3> rel;
+		vector<float> distSq;
+
+		vector<size_t> dbgAccepted(1'000'000);
+
+		traversePost(node, [baseSpacing, &onNodeCompleted, &onNodeDiscarded, &attributes, &pointPos, &pointIdx, &pointIndices, &rel, &distSq, &dbgAccepted](Node* node) {
 			node->sampled = true;
 
 			int64_t numPoints = node->numPoints;
@@ -49,6 +84,8 @@ struct SamplerPoisson : public Sampler {
 			auto size = max - min;
 			auto scale = attributes.posScale;
 			auto offset = attributes.posOffset;
+
+			const size_t sizPoint = attributes.bytes;
 
 			bool isLeaf = node->isLeaf();
 
@@ -63,7 +100,7 @@ struct SamplerPoisson : public Sampler {
 			// first, check for each point whether it's accepted or rejected
 			// save result in an array with one element for each point
 
-			int64_t numPointsInChildren = 0;
+			size_t numPointsInChildren = 0;
 			for (auto child : node->children) {
 				if (child == nullptr) {
 					continue;
@@ -72,88 +109,83 @@ struct SamplerPoisson : public Sampler {
 				numPointsInChildren += child->numPoints;
 			}
 
-			vector<Point> points;
-			points.reserve(numPointsInChildren);
+			pointPos.clear();
+			pointPos.reserve(numPointsInChildren);
+			pointIdx.clear();
+			pointIdx.reserve(numPointsInChildren);
+
+			pointIndices.resize(numPointsInChildren);
+			iota(pointIndices.begin(), pointIndices.end(), 0);
 
 			vector<vector<int8_t>> acceptedChildPointFlags;
 			vector<int64_t> numRejectedPerChild(8, 0);
 			int64_t numAccepted = 0;
 
-			for (int64_t childIndex = 0; childIndex < 8; childIndex++) {
-				auto child = node->children[childIndex];
+			for (uint8_t childIndex = 0; childIndex < 8; childIndex++) {
+				Node *child = node->children[childIndex].get();
 
 				if (child == nullptr) {
 					acceptedChildPointFlags.push_back({});
-					numRejectedPerChild.push_back({});
+					//numRejectedPerChild.push_back({});
 
 					continue;
 				}
 
-				vector<int8_t> acceptedFlags(child->numPoints, 0);
-				acceptedChildPointFlags.push_back(acceptedFlags);
+				acceptedChildPointFlags.push_back(vector<int8_t>(child->numPoints, 0));
 
-				for (int64_t i = 0; i < child->numPoints; i++) {
-					int64_t pointOffset = i * attributes.bytes;
-					int32_t* xyz = reinterpret_cast<int32_t*>(child->points->data_u8 + pointOffset);
+				for (size_t i = 0; i < child->numPoints; i++) {
+					size_t pointOffset = i * sizPoint;
+					auto* xyz = reinterpret_cast<const int32_t*>(child->points->data_u8 + pointOffset);
 
 					double x = (xyz[0] * scale.x) + offset.x;
 					double y = (xyz[1] * scale.y) + offset.y;
 					double z = (xyz[2] * scale.z) + offset.z;
 
-					Point point = { x, y, z, i, childIndex };
-
-					points.push_back(point);
+					pointPos.push_back(f32x3(x, y, z));
+					pointIdx.push_back({ i, childIndex });
 				}
 
 			}
 
-			unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+			// unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 
-			thread_local vector<Point> dbgAccepted(1'000'000);
-			int64_t dbgNumAccepted = 0;
+			size_t dbgNumAccepted = 0;
 			double spacing = baseSpacing / pow(2.0, node->level());
 			double squaredSpacing = spacing * spacing;
 
-			auto squaredDistance = [](const Point& a, const Point& b) {
-				double dx = a.x - b.x;
-				double dy = a.y - b.y;
-				double dz = a.z - b.z;
+			f32x3 center = (node->min + node->max) * 0.5;
 
-				double dd = dx * dx + dy * dy + dz * dz;
+			// Precompute relative position to the node center and the squared
+			// length of this vector
+			rel.resize(numPointsInChildren);
+			distSq.resize(numPointsInChildren);
 
-				return dd;
-			};
-
-			auto center = (node->min + node->max) * 0.5;
+			for (size_t i = 0; i < numPointsInChildren; i++) {
+				f32x3 c = pointPos[i] - center;
+				rel[i] = c;
+				distSq[i] = c.lengthSq();
+			}
 
 			//int dbgChecks = -1;
 			//int dbgSumChecks = 0;
 			//int dbgMaxChecks = 0;
 
-			auto checkAccept = [/*&dbgChecks, &dbgSumChecks,*/ &dbgNumAccepted, spacing, squaredSpacing, &squaredDistance, center /*, &numDistanceChecks*/](const Point &candidate) {
-
-				auto cx = candidate.x - center.x;
-				auto cy = candidate.y - center.y;
-				auto cz = candidate.z - center.z;
-				auto cdd = cx * cx + cy * cy + cz * cz;
-				auto cd = sqrt(cdd);
+			auto checkAccept = [/*&dbgChecks, &dbgSumChecks,*/ &dbgAccepted, &dbgNumAccepted, spacing, squaredSpacing, &pointPos, &rel, &distSq /*, &numDistanceChecks*/](size_t idxCandidate) {
+				f32x3 candidate = pointPos[idxCandidate];
+				float cd = sqrtf(distSq[idxCandidate]);
 				auto limit = (cd - spacing);
-				auto limitSquared = limit * limit;
+				float limitSquared = limit * limit;
+				float ss = squaredSpacing;
 
-				int64_t j = 0;
-				for (int64_t i = dbgNumAccepted - 1; i >= 0; i--) {
-
-					auto& point = dbgAccepted[i];
+				uint16_t j = 0;
+				for (size_t i = dbgNumAccepted - 1; i < dbgNumAccepted; i--) {
+					size_t idxPoint = dbgAccepted[i];
 
 					//dbgChecks++;
 					//dbgSumChecks++;
 
 					// check distance to center
-					auto px = point.x - center.x;
-					auto py = point.y - center.y;
-					auto pz = point.z - center.z;
-					auto pdd = px * px + py * py + pz * pz;
-					//auto pd = sqrt(pdd);
+					float pdd = distSq[idxPoint];
 
 					// stop when differences to center between candidate and accepted exceeds the spacing
 					// any other previously accepted point will be even closer to the center.
@@ -161,9 +193,9 @@ struct SamplerPoisson : public Sampler {
 						return true;
 					}
 
-					double dd = squaredDistance(point, candidate);
+					float dd = (pointPos[idxPoint] - candidate).lengthSq();
 
-					if (dd < squaredSpacing) {
+					if (dd < ss) {
 						return false;
 					}
 
@@ -180,42 +212,28 @@ struct SamplerPoisson : public Sampler {
 			};
 
 			auto parallel = std::execution::par_unseq;
-			std::sort(parallel, points.begin(), points.end(), [center](const Point &a, const Point &b) -> bool {
-
-				auto ax = a.x - center.x;
-				auto ay = a.y - center.y;
-				auto az = a.z - center.z;
-				auto add = ax * ax + ay * ay + az * az;
-
-				auto bx = b.x - center.x;
-				auto by = b.y - center.y;
-				auto bz = b.z - center.z;
-				auto bdd = bx * bx + by * by + bz * bz;
-
+			std::sort(parallel, pointIndices.begin(), pointIndices.end(), [&distSq](size_t lhs, size_t rhs) -> bool {
 				// sort by distance to center
-				return add < bdd;
-
-				// sort by manhattan distance to center
-				//return (ax + ay + az) < (bx + by + bz);
-
-				// sort by z axis
-				//return a.z < b.z;
+				float distLhs = distSq[lhs];
+				float distRhs = distSq[rhs];
+				return distLhs < distRhs;
 			});
 
-			for (const Point &point : points) {
+			for (size_t idxPoint : pointIndices) {
+				PointIndex idx = pointIdx[idxPoint];
 
 				//dbgChecks = 0;
 
-				bool isAccepted = checkAccept(point);
+				bool isAccepted = checkAccept(idxPoint);
 
 				//dbgMaxChecks = std::max(dbgChecks, dbgMaxChecks);
 
 				if (isAccepted) {
-					dbgAccepted[dbgNumAccepted] = point;
+					dbgAccepted[dbgNumAccepted] = idxPoint;
 					dbgNumAccepted++;
 					numAccepted++;
 				} else {
-					numRejectedPerChild[point.childIndex]++;
+					numRejectedPerChild[idx.childIndex]++;
 				}
 
 				//{ // debug: store sample time in GPS time attribute
@@ -238,14 +256,14 @@ struct SamplerPoisson : public Sampler {
 				//		//point.pointIndex
 				//}
 
-				acceptedChildPointFlags[point.childIndex][point.pointIndex] = isAccepted ? 1 : 0;
+				acceptedChildPointFlags[idx.childIndex][idx.pointIndex] = isAccepted ? 1 : 0;
 
 				//abc++;
 
 			}
 
-			auto accepted = make_shared<Buffer>(numAccepted * attributes.bytes);
-			for (int64_t childIndex = 0; childIndex < 8; childIndex++) {
+			auto accepted = make_shared<Buffer>(numAccepted * sizPoint);
+			for (uint8_t childIndex = 0; childIndex < 8; childIndex++) {
 				auto child = node->children[childIndex];
 
 				if (child == nullptr) {
@@ -254,17 +272,17 @@ struct SamplerPoisson : public Sampler {
 
 				auto numRejected = numRejectedPerChild[childIndex];
 				auto& acceptedFlags = acceptedChildPointFlags[childIndex];
-				auto rejected = make_shared<Buffer>(numRejected * attributes.bytes);
+				auto rejected = make_shared<Buffer>(numRejected * sizPoint);
 
-				for (int64_t i = 0; i < child->numPoints; i++) {
-					auto isAccepted = acceptedFlags[i];
-					int64_t pointOffset = i * attributes.bytes;
+				for (size_t i = 0; i < child->numPoints; i++) {
+					bool isAccepted = acceptedFlags[i];
+					size_t pointOffset = i * sizPoint;
 
 					if (isAccepted) {
-						accepted->write(child->points->data_u8 + pointOffset, attributes.bytes);
+						accepted->write(child->points->data_u8 + pointOffset, sizPoint);
 						// rejected->write(child->points->data_u8 + pointOffset, attributes.bytes);
 					} else {
-						rejected->write(child->points->data_u8 + pointOffset, attributes.bytes);
+						rejected->write(child->points->data_u8 + pointOffset, sizPoint);
 					}
 				}
 
