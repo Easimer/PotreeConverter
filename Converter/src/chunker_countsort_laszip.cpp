@@ -301,7 +301,8 @@ namespace chunker_countsort_laszip {
 
 			int64_t pointsLeft = numPoints;
 			// int64_t batchSize = 1'000'000;
-			int64_t batchSize = std::max(size_t(1), numPoints / (2 * std::max(numChunkerThreads, size_t(1))));
+			size_t batchSize = numPoints / (2 * std::max(numChunkerThreads, size_t(1)));
+			batchSize = std::max(size_t(1), std::min(batchSize, size_t(16777216)));
 			int64_t numRead = 0;
 
 			while (pointsLeft > 0) {
