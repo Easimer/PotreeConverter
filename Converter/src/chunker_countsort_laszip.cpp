@@ -193,7 +193,7 @@ namespace chunker_countsort_laszip {
 
 			laszip_POINTER laszip_reader;
 			{
-				laszip_BOOL is_compressed = iEndsWith(path, ".laz") ? 1 : 0;
+				laszip_BOOL is_compressed = 0;
 				laszip_BOOL request_reader = 1;
 
 				laszip_create(&laszip_reader);
@@ -289,7 +289,7 @@ namespace chunker_countsort_laszip {
 				laszip_create(&laszip_reader);
 
 				laszip_BOOL request_reader = 1;
-				laszip_BOOL is_compressed = iEndsWith(source.path, ".laz") ? 1 : 0;
+				laszip_BOOL is_compressed = 0;
 
 				laszip_request_compatibility_mode(laszip_reader, request_reader);
 				laszip_open_reader(laszip_reader, source.path.c_str(), &is_compressed);

@@ -75,7 +75,7 @@ LasHeader loadLasHeader(string path) {
 	laszip_point* point;
 
 	laszip_BOOL request_reader = 1;
-	laszip_BOOL is_compressed = iEndsWith(path, ".laz") ? 1 : 0;
+	laszip_BOOL is_compressed = 0;
 
 	laszip_create(&laszip_reader);
 	laszip_request_compatibility_mode(laszip_reader, request_reader);
