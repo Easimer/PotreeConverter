@@ -1392,7 +1392,7 @@ SoA toStructOfArrays(Node* node, Attributes attributes) {
 //static unordered_map<string, int64_t> compressedCounters;
 //static mutex mtx_dbg_compress;
 
-shared_ptr<Buffer> compress(Node* node, Attributes attributes) {
+shared_ptr<Buffer> compress(Node* node, Attributes attributes, int level) {
 
 	auto numPoints = node->numPoints;
 	auto soa = toStructOfArrays(node, attributes);
@@ -1445,32 +1445,19 @@ shared_ptr<Buffer> compress(Node* node, Attributes attributes) {
 	{
 		auto buffer = bufferMerged;
 
-		int quality = 6;
+		int quality = level;
 		int lgwin = BROTLI_DEFAULT_WINDOW;
 		auto mode = BROTLI_DEFAULT_MODE;
 		uint8_t* input_buffer = buffer->data_u8;
 		size_t input_size = buffer->size;
 
-		size_t encoded_size = input_size * 1.5 + 1'000;
+		size_t encoded_size = BrotliEncoderMaxCompressedSize(input_size);
 		shared_ptr<Buffer> outputBuffer = make_shared<Buffer>(encoded_size);
 		uint8_t* encoded_buffer = outputBuffer->data_u8;
 
 		BROTLI_BOOL success = BROTLI_FALSE;
 
-		for (int i = 0; i < 5; i++) {
-			success = BrotliEncoderCompress(quality, lgwin, mode, input_size, input_buffer, &encoded_size, encoded_buffer);
-
-			if (success == BROTLI_TRUE) {
-				break;
-			} else {
-				encoded_size = (encoded_size + 1024) * 1.5;
-				outputBuffer = make_shared<Buffer>(encoded_size);
-				encoded_buffer = outputBuffer->data_u8;
-
-				logger::WARN("reserved encoded_buffer size was too small. Trying again with size " + formatNumber(encoded_size) + ".");
-			}
-		}
-
+		success = BrotliEncoderCompress(quality, lgwin, mode, input_size, input_buffer, &encoded_size, encoded_buffer);
 		if (success == BROTLI_FALSE) {
 			stringstream ss;
 			ss << "failed to compress node " << node->name << ". aborting conversion." ;
@@ -1547,10 +1534,10 @@ void Writer::writeAndUnload(Node* node) {
 
 	shared_ptr<Buffer> sourceBuffer;
 
-	if (encoding == "BROTLI") {
-		sourceBuffer = compress(node, attributes);
-	} else {
+	if (encoding == "UNCOMPRESSED") {
 		sourceBuffer = node->points;
+	} else {
+		sourceBuffer = compress(node, attributes, indexer->options.compressionLevel);
 	}
 	
 

@@ -184,4 +184,5 @@ struct Options {
 	bool noChunking = false;
 	bool noIndexing = false;
 
+	int compressionLevel = 5;
 };

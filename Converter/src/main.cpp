@@ -25,6 +25,7 @@ Options parseArguments(int argc, char** argv) {
 	args.addArgument("help,h", "Display help information");
 	args.addArgument("outdir,o", "Output directory");
 	args.addArgument("encoding", "Encoding type \"BROTLI\", \"UNCOMPRESSED\" (default)");
+	args.addArgument("level", "Compression level to use when a compressed encoding is selected; 1 to 11, 5 by default");
 	args.addArgument("method,m", "Point sampling method \"poisson\", \"poisson_average\", \"random\"");
 	args.addArgument("chunkMethod", "Chunking method");
 	args.addArgument("keep-chunks", "Skip deleting temporary chunks during conversion");
@@ -118,6 +119,12 @@ Options parseArguments(int argc, char** argv) {
 	bool noChunking = args.has("no-chunking");
 	bool noIndexing = args.has("no-indexing");
 
+	int compressionLevel = 5;
+	if (args.has("level")) {
+		compressionLevel = args.get("level").as<int>();
+	}
+
+
 	Options options;
 	options.source = source;
 	options.outdir = outdir;
@@ -134,6 +141,8 @@ Options parseArguments(int argc, char** argv) {
 	options.keepChunks = keepChunks;
 	options.noChunking = noChunking;
 	options.noIndexing = noIndexing;
+
+	options.compressionLevel = compressionLevel;
 
 	//cout << "flags: ";
 	//for (string flag : options.flags) {
